@@ -1,0 +1,87 @@
+name: cartellow-dev
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${DB_DATABASE:-cartellow}
+      POSTGRES_USER: ${DB_USERNAME:-cartellow}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-cartellow_dev_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${DB_PORT_HOST:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME:-cartellow} -d ${DB_DATABASE:-cartellow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+      target: dev
+    restart: unless-stopped
+    volumes:
+      - ./backend:/var/www/html
+    environment:
+      FPM_UID: ${HOST_UID:-1000}
+      FPM_GID: ${HOST_GID:-1000}
+      HOME: /tmp
+      COMPOSER_HOME: /tmp/composer
+      # Le variabili d'ambiente hanno la precedenza sul file backend/.env
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:${APP_PORT:-8080}
+      DB_CONNECTION: pgsql
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_DATABASE: ${DB_DATABASE:-cartellow}
+      DB_USERNAME: ${DB_USERNAME:-cartellow}
+      DB_PASSWORD: ${DB_PASSWORD:-cartellow_dev_password}
+      MAIL_MAILER: smtp
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      MAIL_FROM_ADDRESS: ordini@cartellow.test
+      QUEUE_CONNECTION: sync
+      SESSION_DRIVER: database
+      CACHE_STORE: database
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: node:22-alpine
+    restart: unless-stopped
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    working_dir: /app
+    environment:
+      HOME: /tmp
+      APP_PORT: ${APP_PORT:-8080}
+    volumes:
+      - ./frontend:/app
+    command: sh -c "npm install && npm run dev"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:80"
+    volumes:
+      - ./docker/caddy/Caddyfile.dev:/etc/caddy/Caddyfile:ro
+      - ./backend/public:/var/www/html/public:ro
+    depends_on:
+      - api
+      - web
+
+  # Intercetta tutte le email inviate in locale: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8025:8025"
+
+volumes:
+  pgdata:

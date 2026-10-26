@@ -1,0 +1,29 @@
+{
+	email {$ACME_EMAIL}
+}
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# Backend Laravel
+	@laravel path /api/* /sanctum/* /up
+	handle @laravel {
+		root * /var/www/html/public
+		php_fastcgi api:9000
+	}
+
+	# Frontend: build statica di React (SPA)
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

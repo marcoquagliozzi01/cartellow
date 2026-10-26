@@ -1,0 +1,19 @@
+{
+	auto_https off
+}
+
+:80 {
+	encode zstd gzip
+
+	# Tutto ciò che è backend va a Laravel (PHP-FPM)
+	@laravel path /api/* /sanctum/* /up
+	handle @laravel {
+		root * /var/www/html/public
+		php_fastcgi api:9000
+	}
+
+	# Il resto è il frontend: Vite dev server (con hot reload)
+	handle {
+		reverse_proxy web:5173
+	}
+}
